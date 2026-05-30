@@ -4,26 +4,4 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.95",
-    "uvicorn[standard]>=0.20",
-    "pydantic>=1.10",
-    "sqlalchemy>=1.4",
-    "alembic>=1.10",
-    "psycopg[binary]>=3.1",
-    "redis>=4.5",
-    "rq>=1.9",
-    "httpx>=0.24",
-    "playwright>=1.35",
-    "praw>=7.7",
-    "sentence-transformers>=2.2",
-    "qdrant-client>=1.1",
-    "hdbscan>=0.8",
-    "streamlit>=1.25",
-    "python-dotenv>=1.0",
-    "pandas>=2.0",
-    "numpy>=1.26",
-]
-
-[project.scripts]
-startup = "main:main"
+dependencies = []
