@@ -12,6 +12,11 @@ from qdrant_client import QdrantClient
 app = FastAPI(title="Startup Intelligence Platform - API")
 
 
+@app.on_event("startup")
+def startup() -> None:
+    db.init_db()
+
+
 class HealthResponse(BaseModel):
     status: str
 
@@ -77,7 +82,7 @@ def search(req: SearchRequest):
     collection = os.getenv("QDRANT_COLLECTION", "startups")
 
     try:
-        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, check_compatibility=False)
         hits = client.search(collection_name=collection, query_vector=qvec, limit=10)
         results = []
         for h in hits:

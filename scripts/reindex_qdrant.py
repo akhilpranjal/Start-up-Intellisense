@@ -5,6 +5,13 @@ Usage:
 
 Requires Qdrant to be reachable via `QDRANT_URL` (default http://localhost:6333).
 """
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from app.db import SessionLocal
 from app.models import Startup
 from embeddings.local_embedder import embed_texts
@@ -24,7 +31,11 @@ def reindex(collection: str = "startups"):
 
         qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
-        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+        try:
+            client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, check_compatibility=False)
+        except Exception as exc:
+            print(f"Qdrant unavailable during connect: {exc}")
+            return
 
         for s in rows:
             meta = s.meta or {}
@@ -40,12 +51,21 @@ def reindex(collection: str = "startups"):
 
             # ensure collection exists
             try:
-                client.get_collection(collection_name=collection)
-            except Exception:
-                client.recreate_collection(collection_name=collection, vectors_config=VectorParams(size=len(embedding), distance=Distance.COSINE))
+                if not client.collection_exists(collection_name=collection):
+                    client.create_collection(
+                        collection_name=collection,
+                        vectors_config=VectorParams(size=len(embedding), distance=Distance.COSINE),
+                    )
+            except Exception as exc:
+                print(f"Qdrant unavailable during create_collection for {collection}: {exc}")
+                return
 
             point = rest_models.PointStruct(id=s.id, vector=embedding, payload={"startup_id": s.id, "name": s.name, "metadata": meta})
-            client.upsert(collection_name=collection, points=[point])
+            try:
+                client.upsert(collection_name=collection, points=[point])
+            except Exception as exc:
+                print(f"Qdrant unavailable during upsert for {collection}: {exc}")
+                return
             print(f"Upserted startup {s.id} -> {s.name}")
     finally:
         db.close()

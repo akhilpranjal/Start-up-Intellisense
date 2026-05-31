@@ -10,6 +10,10 @@ from qdrant_client.http.models import VectorParams, Distance
 from rapidfuzz import fuzz
 
 
+def _qdrant_unavailable_error(operation: str, exc: Exception) -> dict:
+    return {"status": "qdrant_unavailable", "operation": operation, "error": str(exc)}
+
+
 def _dedupe_and_merge(db, name: str, source: str, metadata: dict, embedding: list):
     # Try matching by name first, then by website if present
     website = metadata.get("url") or (metadata.get("website") if metadata else None)
@@ -90,7 +94,7 @@ def process_raw(raw_id: int):
             qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
             qdrant_api_key = os.getenv("QDRANT_API_KEY")
             collection = os.getenv("QDRANT_COLLECTION", "startups")
-            client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+            client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, check_compatibility=False)
 
             # ensure collection exists with correct vector size
             try:
@@ -123,7 +127,12 @@ def reindex_all(collection: str = None):
         qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
         coll = collection or os.getenv("QDRANT_COLLECTION", "startups")
-        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+        try:
+            client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, check_compatibility=False)
+        except Exception as exc:
+            payload = _qdrant_unavailable_error("connect", exc)
+            payload["count"] = len(rows)
+            return payload
 
         for s in rows:
             meta = s.meta or {}
@@ -136,12 +145,25 @@ def reindex_all(collection: str = None):
                 embedding = vecs[0].tolist()
 
             try:
-                client.get_collection(collection_name=coll)
-            except Exception:
-                client.recreate_collection(collection_name=coll, vectors_config=VectorParams(size=len(embedding), distance=Distance.COSINE))
+                if not client.collection_exists(collection_name=coll):
+                    client.create_collection(
+                        collection_name=coll,
+                        vectors_config=VectorParams(size=len(embedding), distance=Distance.COSINE),
+                    )
+            except Exception as exc:
+                payload = _qdrant_unavailable_error("create_collection", exc)
+                payload["count"] = len(rows)
+                payload["collection"] = coll
+                return payload
 
             point = rest_models.PointStruct(id=s.id, vector=embedding, payload={"startup_id": s.id, "name": s.name, "metadata": meta})
-            client.upsert(collection_name=coll, points=[point])
+            try:
+                client.upsert(collection_name=coll, points=[point])
+            except Exception as exc:
+                payload = _qdrant_unavailable_error("upsert", exc)
+                payload["count"] = len(rows)
+                payload["collection"] = coll
+                return payload
 
         return {"status": "reindexed", "count": len(rows)}
     finally:
