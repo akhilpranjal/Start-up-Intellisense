@@ -16,8 +16,9 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "startups")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
 # LLM / extraction settings
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-EXTRACTION_MODE = os.getenv("EXTRACTION_MODE", "mock")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+EXTRACTION_MODE = os.getenv("EXTRACTION_MODE", "llm")
 
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./startup_intel.db")
