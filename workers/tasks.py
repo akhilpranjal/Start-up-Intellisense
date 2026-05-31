@@ -1,5 +1,7 @@
 from app.db import SessionLocal
 from app.models import RawScrape, Startup
+from scrapers.base import persist_raw
+from scrapers.yc_playwright import scrape_yc_companies
 from extractors.mock_extractor import extract_structured
 from embeddings.local_embedder import embed_texts
 import os
@@ -67,7 +69,7 @@ def process_raw(raw_id: int):
             return {"error": "raw not found"}
 
         # Extraction: use LLM extractor if requested via env, otherwise mock
-        extraction_mode = os.getenv("EXTRACTION_MODE", "mock")
+        extraction_mode = os.getenv("EXTRACTION_MODE", "llm")
         if extraction_mode == "llm":
             try:
                 from extractors.llm_extractor import extract_structured_llm
@@ -109,6 +111,30 @@ def process_raw(raw_id: int):
             pass
 
         return {"status": "processed", "startup_id": startup_id}
+    finally:
+        db.close()
+
+
+def scrape_and_process_yc(max_pages: int = 1):
+    """Scrape YC companies, persist raw rows, then process each row."""
+    db = SessionLocal()
+    try:
+        items = scrape_yc_companies(max_pages=max_pages)
+        if not items:
+            return {"status": "no_results", "count": 0}
+
+        raw_ids = []
+        for item in items:
+            rec = persist_raw(
+                db,
+                source=item.get("source", "yc"),
+                raw_text=item.get("description") or item.get("name") or "",
+                metadata=item,
+            )
+            raw_ids.append(rec.id)
+            process_raw(rec.id)
+
+        return {"status": "scraped_and_processed", "count": len(raw_ids), "raw_ids": raw_ids}
     finally:
         db.close()
 
