@@ -5,7 +5,7 @@ import redis
 from rq import Queue
 
 from . import db
-from .models import RawScrape
+from .models import RawScrape, Startup
 from embeddings.local_embedder import embed_texts
 from qdrant_client import QdrantClient
 
@@ -71,6 +71,29 @@ class ReindexRequest(BaseModel):
     collection: str | None = None
 
 
+class ScrapeRequest(BaseModel):
+    max_pages: int = 1
+
+
+def _serialize_raw(row: RawScrape) -> dict:
+    return {
+        "id": row.id,
+        "source": row.source,
+        "scraped_at": row.scraped_at.isoformat() if row.scraped_at else None,
+        "raw_text": row.raw_text,
+        "metadata": row.meta or {},
+    }
+
+
+def _serialize_startup(row: Startup) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "source": row.source,
+        "metadata": row.meta or {},
+    }
+
+
 @app.post("/search")
 def search(req: SearchRequest):
     # embed the query
@@ -91,6 +114,35 @@ def search(req: SearchRequest):
     except Exception:
         # If Qdrant not available, return empty results
         return {"query": req.query, "results": []}
+
+
+@app.get("/admin/stats")
+def admin_stats(db_session=Depends(get_db)):
+    raw_count = db_session.query(RawScrape).count()
+    startup_count = db_session.query(Startup).count()
+    recent_raw = db_session.query(RawScrape).order_by(RawScrape.id.desc()).limit(5).all()
+    recent_startups = db_session.query(Startup).order_by(Startup.id.desc()).limit(5).all()
+    return {
+        "raw_count": raw_count,
+        "startup_count": startup_count,
+        "recent_raw": [_serialize_raw(row) for row in recent_raw],
+        "recent_startups": [_serialize_startup(row) for row in recent_startups],
+    }
+
+
+@app.post("/scrape/yc")
+def scrape_yc(req: ScrapeRequest):
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        redis_conn = redis.from_url(redis_url, protocol=2)
+        q = Queue("default", connection=redis_conn)
+        job = q.enqueue("workers.tasks.scrape_and_process_yc", req.max_pages)
+        return {"status": "enqueued", "job_id": job.id, "max_pages": req.max_pages}
+    except Exception:
+        from workers.tasks import scrape_and_process_yc
+
+        out = scrape_and_process_yc(req.max_pages)
+        return {"status": "processed_inline", "max_pages": req.max_pages, "result": out}
 
 
 @app.post("/admin/reindex")
