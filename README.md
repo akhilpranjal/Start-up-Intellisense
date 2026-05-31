@@ -40,12 +40,6 @@ pip install -r requirements.txt
 python -m playwright install
 ```
 
-4. Start infra (Redis + Qdrant):
-
-```bash
-docker compose up -d redis qdrant
-```
-
 ## Configuration
 
 Use `.env` in project root.
