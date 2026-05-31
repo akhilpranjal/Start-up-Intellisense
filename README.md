@@ -51,7 +51,7 @@ Required/commonly used keys:
 - `QDRANT_COLLECTION`
 - `DATABASE_URL`
 - `ADMIN_TOKEN` (optional, secures admin endpoint)
-- `OPENAI_API_KEY` + `EXTRACTION_MODE=llm` (optional)
+- `GROQ_API_KEY`, `GROQ_MODEL` + `EXTRACTION_MODE=llm` (recommended)
 
 ## Run
 
