@@ -9,7 +9,8 @@ class RawScrape(Base):
     source = Column(String(64), index=True)
     scraped_at = Column(DateTime(timezone=True), server_default=func.now())
     raw_text = Column(Text)
-    metadata = Column(JSON)
+    # Use attribute name `meta` because `metadata` is reserved by SQLAlchemy.
+    meta = Column("metadata", JSON)
 
 
 class Startup(Base):
@@ -17,4 +18,5 @@ class Startup(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True)
     source = Column(String(64))
-    metadata = Column(JSON)
+    # Use attribute name `meta` because `metadata` is reserved by SQLAlchemy.
+    meta = Column("metadata", JSON)
