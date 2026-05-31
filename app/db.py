@@ -10,6 +10,9 @@ Base = declarative_base()
 
 
 def init_db():
+    # Ensure model classes are imported so SQLAlchemy metadata is populated.
+    from . import models  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
 
 
