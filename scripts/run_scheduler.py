@@ -8,9 +8,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from apscheduler.schedulers.blocking import BlockingScheduler
-from app.db import SessionLocal
-from scrapers.yc_playwright import scrape_yc_companies
-from scrapers.base import persist_raw
 import traceback
 import os
 import redis
@@ -21,15 +18,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 def job_yc():
     try:
-        items = scrape_yc_companies(max_pages=1)
-        db = SessionLocal()
         redis_conn = redis.from_url(REDIS_URL, protocol=2)
         q = Queue("default", connection=redis_conn)
-        for it in items:
-            rec = persist_raw(db, source="yc", raw_text=it.get("description") or it.get("name") or "", metadata=it)
-            q.enqueue("workers.tasks.process_raw", rec.id)
-        db.close()
-        print("yc job enqueued")
+        q.enqueue("workers.tasks.scrape_and_process_yc", 1)
+        print("yc scrape job enqueued")
     except Exception:
         traceback.print_exc()
 
