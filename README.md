@@ -1,94 +1,71 @@
 # Startup Intellisense
 
-This project focuses on Y Combinator companies (`scrapers/yc_playwright.py`) via Playwright.
+This repo is intentionally simple.
 
-The pipeline:
-1. YC scraper fetches company cards.
-2. Raw data is persisted (`raw_scrape`) and enqueued to RQ.
-3. Worker extracts structure, creates embeddings, deduplicates startups.
-4. Embeddings are upserted into Qdrant.
-5. API provides semantic search.
+The whole flow is:
 
-## Components
+1. Scrape YC company pages once with Crawl4AI and save each company to Postgres.
+2. Extract extra fields from the description with Groq and write them back to the same row.
+3. Create an embedding from the one-line summary with a free sentence-transformer, store it in Qdrant, and also keep a copy in Postgres.
+4. Load the vectors again, cluster them with HDBSCAN, save cluster labels to Postgres, and ask the LLM to name each cluster.
 
-- API: `app/api.py`
-- DB models: `app/models.py`
-- Worker tasks: `workers/tasks.py`
-- YC scraper: `scrapers/yc_playwright.py`
-- Scheduler: `scripts/run_scheduler.py`
-- Manual scraper CLI: `scripts/run_scraper.py`
+## What you get
 
-## Setup
+- `scripts/scrape_yc.py` for the first scrape.
+- `scripts/extract_companies.py` for LLM field extraction.
+- `scripts/embed_companies.py` for embeddings and Qdrant upserts.
+- `scripts/cluster_trends.py` for HDBSCAN clustering and cluster names.
+- `ui/streamlit_app.py` for the dashboard.
+- `app/api.py` for a tiny FastAPI layer if you want it.
 
-1. Create and activate virtualenv:
+## Install
 
-```bash
+```powershell
 python -m venv .venv
-# Windows PowerShell
 .\.venv\Scripts\Activate.ps1
-```
-
-2. Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-3. Install Playwright browsers:
+You also need these services running somewhere:
 
-```bash
-python -m playwright install
+- PostgreSQL
+- Qdrant
+
+## Environment
+
+Copy [.env.example](.env.example) to `.env` and fill in the values.
+
+Important variables:
+
+- `DATABASE_URL` for Postgres.
+- `QDRANT_URL`, `QDRANT_API_KEY`, and `QDRANT_COLLECTION`.
+- `GROQ_API_KEY` and `GROQ_MODEL` for extraction and cluster names.
+- Embeddings use a local sentence-transformer, so no embedding API key is needed.
+- `EXTRACTION_MODE=groq` to use Groq, or `mock` if you just want the pipeline to run with fake extraction.
+
+## Run the scripts
+
+```powershell
+python scripts\scrape_yc.py
+python scripts\extract_companies.py
+python scripts\embed_companies.py
+python scripts\cluster_trends.py
 ```
 
-## Configuration
+## Run the app
 
-Use `.env` in project root.
-
-Required/commonly used keys:
-- `REDIS_URL`
-- `QDRANT_URL`
-- `QDRANT_API_KEY` (blank for local Qdrant)
-- `QDRANT_COLLECTION`
-- `DATABASE_URL`
-- `ADMIN_TOKEN` (optional, secures admin endpoint)
-- `GROQ_API_KEY`, `GROQ_MODEL` + `EXTRACTION_MODE=llm` (recommended)
-
-## Run
-
-Start API:
-
-```bash
+```powershell
 uvicorn app.api:app --host 0.0.0.0 --port 8000
+streamlit run ui/streamlit_app.py
 ```
 
-Start worker:
+## Dashboard
 
-```bash
-rq worker default
-```
+The dashboard is kept plain on purpose:
 
-Run YC scheduler (every 6 hours):
-
-```bash
-python scripts/run_scheduler.py
-```
-
-Run one YC scrape manually:
-
-```bash
-python scripts/run_scraper.py yc 1
-```
-
-## Useful endpoints
-
-- `GET /health`
-- `POST /ingest`
-- `POST /search`
-- `POST /admin/reindex` (optionally protected by `ADMIN_TOKEN`)
-
-## Notes
-- If you already have DB rows and want them in Qdrant, run:
-
-```bash
-python scripts/reindex_qdrant.py
-```
+- Semantic search: type a query and see matching startups in friendly language.
+- Trend clusters: see which startups belong to which cluster.
+- Tech stack breakdown: bar chart of the most common technologies.
+- Trending skills: count of the extracted skills field.
+- Trending terms: count of the extracted terms field.
+- Latest companies: top 15 newest rows.

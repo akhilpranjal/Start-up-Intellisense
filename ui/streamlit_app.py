@@ -1,60 +1,116 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
 import streamlit as st
-import requests
-
-API_URL = st.secrets.get("API_URL", "http://localhost:8000")
-
-st.set_page_config(page_title="Startup Intelligence", layout="wide")
-
-st.title("Startup Intelligence")
-st.caption("YC scrape -> raw DB -> structure -> embeddings -> Qdrant")
 
 
-def call_api(method: str, path: str, payload: dict | None = None):
-    url = f"{API_URL}{path}"
-    if method == "GET":
-        return requests.get(url, timeout=30)
-    return requests.post(url, json=payload or {}, timeout=300)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from app.db import cluster_groups, count_companies, latest_companies, search_text, top_values  # noqa: E402
+from app.embeddings import embed_text  # noqa: E402
+from app.vector_store import search_vectors  # noqa: E402
 
 
-top_left, top_mid, top_right = st.columns(3)
-try:
-    stats = call_api("GET", "/admin/stats").json()
-    top_left.metric("Raw rows", stats.get("raw_count", 0))
-    top_mid.metric("Structured startups", stats.get("startup_count", 0))
-    top_right.metric("API", API_URL)
-except Exception as exc:
-    st.error(f"Could not load stats: {exc}")
-    stats = {"recent_raw": [], "recent_startups": []}
+st.set_page_config(page_title="Startup Intellisense", layout="wide")
 
-tab_scrape, tab_search, tab_data = st.tabs(["Scrape YC", "Search", "Data"])
 
-with tab_scrape:
-    st.subheader("Trigger YC scrape")
-    with st.form("scrape_yc_form"):
-        max_pages = st.number_input("Pages to scrape", min_value=1, max_value=10, value=1, step=1)
-        submitted = st.form_submit_button("Scrape now")
-    if submitted:
-        try:
-            response = call_api("POST", "/scrape/yc", {"max_pages": int(max_pages)})
-            st.json(response.json())
-        except Exception as exc:
-            st.error(f"Scrape request failed: {exc}")
+def _friendly_card(item: dict[str, Any]) -> str:
+    """Description:
+Format one company payload for display in Streamlit.
+Input Description:
+item is a company dictionary with optional summary fields.
+Output Description:
+Returns a markdown string for the dashboard.
+"""
+    name = item.get("name") or "Unknown startup"
+    summary = item.get("one_line_summary") or item.get("description") or "No summary yet."
+    domain = item.get("problem_domain") or ""
+    market = item.get("target_market") or ""
+    cluster_name = item.get("cluster_name") or "Unclustered"
+    parts = [part for part in [domain, market] if part]
+    suffix = f" ({', '.join(parts)})" if parts else ""
+    return f"**{name}** - {summary}{suffix}  \nCluster: {cluster_name}"
+
+
+st.title("Startup Intellisense")
+st.caption("Simple YC startup search, clustering, and trend tracking.")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Companies", count_companies())
+col2.metric("Clusters", len(cluster_groups()))
+col3.metric("Latest rows", len(latest_companies(15)))
+
+tab_search, tab_clusters, tab_trends, tab_latest = st.tabs([
+    "Semantic search",
+    "Trend clusters",
+    "Trends",
+    "Latest companies",
+])
 
 with tab_search:
-    st.subheader("Semantic search over Qdrant")
-    query = st.text_input("Search query", placeholder="e.g. AI for sales teams")
-    if st.button("Search"):
-        try:
-            response = call_api("POST", "/search", {"query": query})
-            st.json(response.json())
-        except Exception as exc:
-            st.error(f"Search failed: {exc}")
+    query = st.text_input("Search startups", placeholder="e.g. AI sales copilot for clinics")
+    limit = st.slider("Results", 3, 20, 10)
+    if query:
+        vector = embed_text(query)
+        results = search_vectors(vector, limit)
+        if not results:
+            fallback = search_text(query, limit)
+            st.write("No vector matches yet, so here are text matches.")
+            for item in fallback:
+                st.markdown(_friendly_card(item))
+                st.divider()
+        else:
+            for result in results:
+                payload = result.get("payload") or {}
+                st.markdown(_friendly_card(payload))
+                st.caption(f"Score: {result.get('score', 0):.3f}")
+                st.divider()
 
-with tab_data:
+with tab_clusters:
+    clusters = cluster_groups()
+    if not clusters:
+        st.info("No clusters yet. Run the scrape, extract, embed, and cluster scripts first.")
+    else:
+        for cluster in clusters:
+            with st.expander(f"{cluster['cluster_name']} ({cluster['count']})", expanded=False):
+                members = cluster.get("members") or []
+                st.write(", ".join(members))
+
+with tab_trends:
     left, right = st.columns(2)
+    tech = pd.DataFrame(top_values("tech_stack", 20))
+    skills = pd.DataFrame(top_values("skills", 20))
+    terms = pd.DataFrame(top_values("terms", 20))
+
     with left:
-        st.subheader("Recent raw rows")
-        st.dataframe(stats.get("recent_raw", []), use_container_width=True, hide_index=True)
+        st.subheader("Tech stack breakdown")
+        if tech.empty:
+            st.info("No tech stack data yet.")
+        else:
+            st.bar_chart(tech.set_index("label")["count"])
+
+        st.subheader("Trending skills")
+        if skills.empty:
+            st.info("No skill data yet.")
+        else:
+            st.bar_chart(skills.set_index("label")["count"])
+
     with right:
-        st.subheader("Recent startups")
-        st.dataframe(stats.get("recent_startups", []), use_container_width=True, hide_index=True)
+        st.subheader("Trending terms")
+        if terms.empty:
+            st.info("No term data yet.")
+        else:
+            st.bar_chart(terms.set_index("label")["count"])
+
+with tab_latest:
+    items = latest_companies(15)
+    if not items:
+        st.info("No companies yet.")
+    else:
+        st.dataframe(pd.DataFrame(items), use_container_width=True)

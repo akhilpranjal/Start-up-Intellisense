@@ -1,2 +1,1 @@
-# scrapers package
-from . import base
+"""YC scraping helpers."""

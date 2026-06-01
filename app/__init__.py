@@ -1,3 +1,1 @@
-# app package
-
-__all__ = ["api", "db", "models"]
+"""Startup Intellisense app package."""

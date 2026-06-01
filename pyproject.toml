@@ -1,28 +1,24 @@
 [project]
 name = "startup-intellisense"
 version = "0.1.0"
-description = "Add your description here"
+description = "A tiny YC startup pipeline with Postgres, Crawl4AI, Groq, Qdrant, HDBSCAN, and Streamlit."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.95",
-    "uvicorn[standard]>=0.20",
-    "pydantic>=1.10",
-    "sqlalchemy>=1.4",
-    "alembic>=1.10",
-    "psycopg[binary]>=3.1",
-    "redis>=4.5",
-    "rq>=1.9",
-    "playwright>=1.35",
-    "sentence-transformers>=2.2",
-    "qdrant-client>=1.1",
-    "hdbscan>=0.8",
-    "streamlit>=1.25",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
     "python-dotenv>=1.0",
-    "pandas>=2.0",
+    "psycopg[binary]>=3.2",
+    "qdrant-client>=1.9",
+    "hdbscan>=0.8.40",
+    "streamlit>=1.36",
+    "pandas>=2.2",
     "numpy>=1.26",
+    "groq>=0.26",
+    "crawl4ai",
     "beautifulsoup4>=4.12",
-    "requests>=2.31",
-    "chromium>=0.0.0",
-    "groq>=0.11",
+    "sentence-transformers>=3.0",
 ]
+
+[tool.setuptools]
+packages = ["app", "scrapers"]
