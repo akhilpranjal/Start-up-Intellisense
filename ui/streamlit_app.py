@@ -113,4 +113,4 @@ with tab_latest:
     if not items:
         st.info("No companies yet.")
     else:
-        st.dataframe(pd.DataFrame(items), use_container_width=True)
+        st.dataframe(pd.DataFrame(items), width='stretch')
