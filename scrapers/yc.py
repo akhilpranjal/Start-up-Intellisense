@@ -1,152 +1,524 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Any
+import asyncio
+import asyncpg
+import httpx
+import json
+import html
+import os
+import random
+import re
 from urllib.parse import urljoin
+from dotenv import load_dotenv
 
-from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
-from app.config import get_settings
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable not set."
+    )
 
 
-@dataclass
-class YCCompany:
-    """Description:
-Represent one scraped YC company record.
-Input Description:
-The dataclass fields are filled from scraped page data.
-Output Description:
-Provides a small record object with an as_dict helper.
+BASE_URL = "https://www.ycombinator.com"
+COMPANIES_URL = f"{BASE_URL}/companies"
+
+SCROLL_WAIT_MS = 1500
+MAX_NO_GROWTH = 5
+
+
+CREATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS yc_companies (
+    slug TEXT PRIMARY KEY,
+
+    name TEXT,
+    one_liner TEXT,
+    description TEXT,
+    website TEXT,
+
+    batch TEXT,
+    batch_code TEXT,
+
+    founded_year INTEGER,
+    team_size INTEGER,
+
+    status TEXT,
+
+    location TEXT,
+    city TEXT,
+    country TEXT,
+
+    linkedin_url TEXT,
+    twitter_url TEXT,
+    github_url TEXT,
+
+    primary_partner TEXT,
+
+    yc_url TEXT,
+
+    founders_json JSONB,
+    tags_json JSONB,
+
+    raw_json JSONB,
+
+    scraped_at TIMESTAMPTZ DEFAULT NOW()
+);
 """
-    yc_slug: str
-    name: str
-    description: str = ""
-    tags: list[str] | None = None
-    batch: str = ""
-    website: str = ""
-    location: str = ""
-    company_url: str = ""
 
-    def as_dict(self) -> dict[str, Any]:
-        """Description:
-Convert the dataclass into a plain dictionary.
-Input Description:
-No direct inputs beyond the current instance state.
-Output Description:
-Returns a dictionary ready for storage.
+
+UPSERT_SQL = """
+INSERT INTO yc_companies (
+    slug,
+    name,
+    one_liner,
+    description,
+    website,
+
+    batch,
+    batch_code,
+
+    founded_year,
+    team_size,
+
+    status,
+
+    location,
+    city,
+    country,
+
+    linkedin_url,
+    twitter_url,
+    github_url,
+
+    primary_partner,
+
+    yc_url,
+
+    founders_json,
+    tags_json,
+
+    raw_json,
+
+    scraped_at
+)
+VALUES (
+    $1,$2,$3,$4,$5,
+    $6,$7,
+    $8,$9,
+    $10,
+    $11,$12,$13,
+    $14,$15,$16,
+    $17,
+    $18,
+    $19,$20,
+    $21,
+    NOW()
+)
+ON CONFLICT (slug)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    one_liner = EXCLUDED.one_liner,
+    description = EXCLUDED.description,
+    website = EXCLUDED.website,
+
+    batch = EXCLUDED.batch,
+    batch_code = EXCLUDED.batch_code,
+
+    founded_year = EXCLUDED.founded_year,
+    team_size = EXCLUDED.team_size,
+
+    status = EXCLUDED.status,
+
+    location = EXCLUDED.location,
+    city = EXCLUDED.city,
+    country = EXCLUDED.country,
+
+    linkedin_url = EXCLUDED.linkedin_url,
+    twitter_url = EXCLUDED.twitter_url,
+    github_url = EXCLUDED.github_url,
+
+    primary_partner = EXCLUDED.primary_partner,
+
+    yc_url = EXCLUDED.yc_url,
+
+    founders_json = EXCLUDED.founders_json,
+    tags_json = EXCLUDED.tags_json,
+
+    raw_json = EXCLUDED.raw_json,
+
+    scraped_at = NOW();
 """
-        return {
-            "yc_slug": self.yc_slug,
-            "name": self.name,
-            "description": self.description,
-            "tags": self.tags or [],
-            "batch": self.batch,
-            "website": self.website,
-            "location": self.location,
-            "company_url": self.company_url,
-        }
 
 
-def _slug_from_url(url: str) -> str:
-    """Description:
-Derive a YC slug from a URL path.
-Input Description:
-url is the company link or href.
-Output Description:
-Returns the final URL segment or a fallback slug.
-"""
-    slug = url.rstrip("/").split("/")[-1]
-    return slug or "company"
+async def create_schema(conn):
+    await conn.execute(CREATE_TABLE_SQL)
 
 
-def _parse_company_cards(html: str, base_url: str) -> list[YCCompany]:
-    """Description:
-Parse YC company cards from HTML.
-Input Description:
-html is the fetched page content and base_url resolves relative links.
-Output Description:
-Returns a list of YCCompany records.
-"""
-    soup = BeautifulSoup(html, "html.parser")
-    seen: set[str] = set()
-    companies: list[YCCompany] = []
+async def load_existing_slugs(conn):
+    rows = await conn.fetch(
+        "SELECT slug FROM yc_companies"
+    )
+    return {r["slug"] for r in rows}
 
-    for anchor in soup.select('a[href*="/companies/"]'):
-        href = anchor.get("href") or ""
-        if not href:
-            continue
-        company_url = urljoin(base_url, href)
-        yc_slug = _slug_from_url(href)
-        if yc_slug in seen:
-            continue
-        seen.add(yc_slug)
 
-        text = " ".join(anchor.get_text(" ", strip=True).split())
-        if not text:
-            continue
+async def collect_company_urls():
+    print("\n[1/3] Collecting company URLs...\n")
 
-        name = text.split(" - ")[0].split(" | ")[0].strip()
-        description = ""
-        parent = anchor.parent
-        if parent:
-            sibling_text = " ".join(parent.get_text(" ", strip=True).split())
-            if sibling_text and sibling_text != name:
-                description = sibling_text.replace(name, "", 1).strip(" -|:")
+    urls = set()
 
-        companies.append(
-            YCCompany(
-                yc_slug=yc_slug,
-                name=name or yc_slug,
-                description=description,
-                tags=[],
-                batch="",
-                website="",
-                location="",
-                company_url=company_url,
+    async with async_playwright() as p:
+
+        browser = await p.chromium.launch(
+            headless=True
+        )
+
+        page = await browser.new_page()
+
+        await page.goto(
+            COMPANIES_URL,
+            wait_until="domcontentloaded",
+            timeout=60000
+        )
+
+        previous_count = 0
+        no_growth_count = 0
+
+        while True:
+
+            links = await page.locator(
+                'a[href^="/companies/"]'
+            ).evaluate_all(
+                """
+                els => els.map(
+                    e => e.getAttribute('href')
+                )
+                """
             )
-        )
 
-    return companies
+            for href in links:
+
+                if not href:
+                    continue
+
+                if href.startswith("/companies/"):
+
+                    path = href.split("?")[0]
+
+                    if path.count("/") == 2:
+                        urls.add(
+                            urljoin(BASE_URL, path)
+                        )
+
+            current_count = len(urls)
+
+            print(
+                f"Found {current_count} URLs..."
+            )
+
+            if current_count == previous_count:
+                no_growth_count += 1
+            else:
+                no_growth_count = 0
+
+            if no_growth_count >= MAX_NO_GROWTH:
+                break
+
+            previous_count = current_count
+
+            await page.mouse.wheel(0, 10000)
+
+            await page.wait_for_timeout(
+                SCROLL_WAIT_MS
+            )
+
+        await browser.close()
+
+    print(
+        f"\nCollected {len(urls)} unique company URLs.\n"
+    )
+
+    return sorted(urls)
 
 
-async def _crawl_html(url: str) -> str:
-    """Description:
-Fetch YC HTML with Crawl4AI when available.
-Input Description:
-url is the page to crawl.
-Output Description:
-Returns HTML, cleaned HTML, markdown, or an empty string.
-"""
-    try:
-        from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
-    except Exception:
-        return ""
+def extract_data_page(html_text):
 
-    async with AsyncWebCrawler() as crawler:
-        result = await crawler.arun(
-            url=url,
-            config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS),
-        )
-        if getattr(result, "html", None):
-            return result.html
-        if getattr(result, "cleaned_html", None):
-            return result.cleaned_html
-        if getattr(result, "markdown", None):
-            return result.markdown
-    return ""
+    m = re.search(
+        r'data-page="(.*?)"',
+        html_text,
+        re.DOTALL
+    )
+
+    if not m:
+        return None
+
+    encoded = m.group(1)
+
+    decoded = html.unescape(encoded)
+
+    return json.loads(decoded)
 
 
-async def scrape_yc_companies() -> list[dict[str, Any]]:
-    """Description:
-Scrape YC companies and convert them to plain dictionaries.
-Input Description:
-No direct inputs.
-Output Description:
-Returns a list of scraped company dictionaries.
-"""
-    settings = get_settings()
-    html = await _crawl_html(settings.yc_url)
-    if not html:
-        return []
-    companies = _parse_company_cards(html, settings.yc_url)
-    return [company.as_dict() for company in companies]
+def build_record(company):
+
+    partner = company.get(
+        "primary_group_partner"
+    )
+
+    return {
+        "slug": company.get("slug"),
+        "name": company.get("name"),
+        "one_liner": company.get("one_liner"),
+        "description": company.get(
+            "long_description"
+        ),
+        "website": company.get("website"),
+
+        "batch": company.get("batch_name"),
+        "batch_code": company.get("batch"),
+
+        "founded_year": company.get(
+            "year_founded"
+        ),
+        "team_size": company.get(
+            "team_size"
+        ),
+
+        "status": company.get(
+            "ycdc_status"
+        ),
+
+        "location": company.get(
+            "location"
+        ),
+        "city": company.get("city"),
+        "country": company.get(
+            "country"
+        ),
+
+        "linkedin_url": company.get(
+            "linkedin_url"
+        ),
+        "twitter_url": company.get(
+            "twitter_url"
+        ),
+        "github_url": company.get(
+            "github_url"
+        ),
+
+        "primary_partner":
+            partner.get("full_name")
+            if partner
+            else None,
+
+        "yc_url": company.get(
+            "ycdc_url"
+        ),
+
+        "founders_json":
+            company.get("founders", []),
+
+        "tags_json":
+            company.get("tags", []),
+
+        "raw_json": company
+    }
+
+
+async def save_company(conn, record):
+
+    await conn.execute(
+        UPSERT_SQL,
+
+        record["slug"],
+        record["name"],
+        record["one_liner"],
+        record["description"],
+        record["website"],
+
+        record["batch"],
+        record["batch_code"],
+
+        record["founded_year"],
+        record["team_size"],
+
+        record["status"],
+
+        record["location"],
+        record["city"],
+        record["country"],
+
+        record["linkedin_url"],
+        record["twitter_url"],
+        record["github_url"],
+
+        record["primary_partner"],
+
+        record["yc_url"],
+
+        json.dumps(
+            record["founders_json"]
+        ),
+        json.dumps(
+            record["tags_json"]
+        ),
+
+        json.dumps(
+            record["raw_json"]
+        ),
+    )
+
+
+async def scrape_company(
+    client,
+    conn,
+    url,
+    index,
+    total
+):
+
+    for attempt in range(3):
+
+        try:
+
+            r = await client.get(
+                url,
+                timeout=30
+            )
+
+            r.raise_for_status()
+
+            page_data = extract_data_page(
+                r.text
+            )
+
+            if not page_data:
+                raise RuntimeError(
+                    "data-page missing"
+                )
+
+            company = page_data[
+                "props"
+            ]["company"]
+
+            record = build_record(
+                company
+            )
+
+            await save_company(
+                conn,
+                record
+            )
+
+            print(
+                f"[{index}/{total}] "
+                f"{record['slug']}"
+            )
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"Retry {attempt+1}/3 "
+                f"{url}"
+            )
+
+            await asyncio.sleep(
+                random.uniform(2, 5)
+            )
+
+    print(f"FAILED: {url}")
+    return False
+
+
+async def main():
+
+    conn = await asyncpg.connect(
+        DATABASE_URL
+    )
+
+    await create_schema(conn)
+
+    existing_slugs = (
+        await load_existing_slugs(conn)
+    )
+
+    urls = await collect_company_urls()
+
+    urls_to_scrape = []
+
+    for url in urls:
+
+        slug = url.rstrip("/").split("/")[-1]
+
+        if slug not in existing_slugs:
+            urls_to_scrape.append(url)
+
+    print(
+        f"Need to scrape "
+        f"{len(urls_to_scrape)} companies."
+    )
+
+    headers = {
+        "User-Agent":
+            (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/137.0.0.0 "
+                "Safari/537.36"
+            )
+    }
+
+    async with httpx.AsyncClient(
+        headers=headers,
+        follow_redirects=True
+    ) as client:
+
+        total = len(urls_to_scrape)
+
+        for i, url in enumerate(
+            urls_to_scrape,
+            start=1
+        ):
+
+            await scrape_company(
+                client,
+                conn,
+                url,
+                i,
+                total
+            )
+
+            await asyncio.sleep(
+                random.uniform(
+                    1.0,
+                    4.0
+                )
+            )
+
+            if i % 50 == 0:
+
+                pause = random.uniform(
+                    2,
+                    5
+                )
+
+                print(
+                    f"\nLong pause "
+                    f"{pause:.1f}s\n"
+                )
+
+                await asyncio.sleep(
+                    pause
+                )
+
+    await conn.close()
+
+    print("\nDone.\n")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
