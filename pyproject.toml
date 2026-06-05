@@ -1,7 +1,7 @@
 [project]
 name = "startup-intellisense"
 version = "0.1.0"
-description = "A tiny YC startup pipeline with Postgres, Crawl4AI, Groq, Qdrant, HDBSCAN, and Streamlit."
+description = "A tiny YC startup pipeline with Postgres, Playwright, Groq, Qdrant, and Streamlit."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
