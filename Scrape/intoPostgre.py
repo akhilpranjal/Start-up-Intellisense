@@ -1,7 +1,20 @@
 import json
 import asyncpg
 
-CREATE_TABLE_SQL = """
+
+CREATE_TABLE_SQL1 = """
+CREATE TABLE IF NOT EXISTS startup_clusters (
+    cluster_id INTEGER PRIMARY KEY,
+    cluster_name TEXT,
+    description TEXT,
+    keywords JSONB,
+    company_count INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+
+CREATE_TABLE_SQL2 = """
 CREATE TABLE IF NOT EXISTS yc_companies (
     slug TEXT PRIMARY KEY,
 
@@ -38,15 +51,34 @@ CREATE TABLE IF NOT EXISTS yc_companies (
 
     enrichment_completed BOOLEAN DEFAULT FALSE,
 
+
+    raw_json JSONB,
+
+    scraped_at TIMESTAMPTZ DEFAULT NOW(),
+
     embedding_completed BOOLEAN DEFAULT FALSE,
     embedding_hash TEXT,
     last_embedded_at TIMESTAMPTZ,
 
-    raw_json JSONB,
-
-    scraped_at TIMESTAMPTZ DEFAULT NOW()
+    cluster_id INTEGER REFERENCES startup_clusters(cluster_id) ON DELETE SET NULL,
+    cluster_confidence FLOAT,
+    is_outlier BOOLEAN DEFAULT FALSE,
+    umap_x FLOAT,
+    umap_y FLOAT,
+    nearest_cluster_id INTEGER REFERENCES startup_clusters(cluster_id) ON DELETE SET NULL,
+    nearest_cluster_score DOUBLE PRECISION
 );
 """
+
+
+CREATE_TABLE_SQL3 = """
+CREATE TABLE IF NOT EXISTS analytics_metrics (
+    metric_name TEXT PRIMARY KEY,
+    metric_value JSONB,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
 
 
 UPSERT_SQL = """
@@ -150,7 +182,13 @@ class YCCompanyDB:
 
     async def create_schema(self):
         await self.conn.execute(
-            CREATE_TABLE_SQL
+            CREATE_TABLE_SQL1
+        )
+        await self.conn.execute(
+            CREATE_TABLE_SQL2
+        )
+        await self.conn.execute(
+            CREATE_TABLE_SQL3
         )
 
     async def load_existing_slugs(self):

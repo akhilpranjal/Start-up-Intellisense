@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
-from Scrape.intoPostgre import YCCompanyDB
+from intoPostgre import YCCompanyDB
 
 load_dotenv()
 
