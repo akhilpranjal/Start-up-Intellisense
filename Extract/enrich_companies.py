@@ -24,6 +24,7 @@ if not GROQ_API_KEY:
 if not GROQ_MODEL:
     raise ValueError("GROQ_MODEL not found")
 
+
 client = Groq(api_key=GROQ_API_KEY)
 
 
@@ -31,23 +32,6 @@ client = Groq(api_key=GROQ_API_KEY)
 
 async def get_connection():
     return await asyncpg.connect(DATABASE_URL)
-
-
-async def ensure_columns(conn):
-    await conn.execute("""
-        ALTER TABLE yc_companies
-        ADD COLUMN IF NOT EXISTS problem_domain TEXT;
-    """)
-
-    await conn.execute("""
-        ALTER TABLE yc_companies
-        ADD COLUMN IF NOT EXISTS target_market TEXT;
-    """)
-
-    await conn.execute("""
-        ALTER TABLE yc_companies
-        ADD COLUMN IF NOT EXISTS enrichment_completed BOOLEAN DEFAULT FALSE;
-    """)
 
 
 async def get_next_batch(conn, batch_size=100):
@@ -211,8 +195,6 @@ async def process_companies():
     conn = await get_connection()
 
     try:
-        await ensure_columns(conn)
-
         total = await get_remaining_count(conn)
 
         if total == 0:
