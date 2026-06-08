@@ -22,6 +22,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+GROQ_MODEL = os.getenv("SEARCHING_GROQ_MODEL")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -186,7 +187,7 @@ Return only the explanation.
 """
 
     response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=f"{GROQ_MODEL}",
         temperature=0,
         messages=[
             {
