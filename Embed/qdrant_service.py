@@ -27,38 +27,6 @@ class QdrantService:
             timeout=60,
         )
 
-    def ensure_collection(self):
-        """
-        Create collection if missing.
-        """
-
-        collections = self.client.get_collections()
-
-        existing = {
-            collection.name
-            for collection in collections.collections
-        }
-
-        if COLLECTION_NAME in existing:
-            print(
-                f"Collection '{COLLECTION_NAME}' already exists."
-            )
-            return
-
-        print(
-            f"Creating collection '{COLLECTION_NAME}'..."
-        )
-
-        self.client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(
-                size=768,
-                distance=Distance.COSINE,
-            ),
-        )
-
-        print("Collection created.")
-
     def ensure_payload_indexes(self):
         """
         Optional but useful later for filtering.

@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 
+
 from embeddings import EmbeddingService, Database
 from qdrant_service import QdrantService
 from text_builder import (
@@ -62,8 +63,6 @@ async def main():
         url=QDRANT_URL,
         api_key=QDRANT_API_KEY,
     )
-
-    qdrant.ensure_collection()
 
     qdrant.ensure_payload_indexes()
 
