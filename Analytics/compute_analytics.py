@@ -78,7 +78,7 @@ async def compute_overview(conn):
         "countries": countries,
         "clusters": clusters,
         "avg_team_size": round(
-            avg_team_size or 0,
+            float(avg_team_size or 0),
             2,
         ),
     }
