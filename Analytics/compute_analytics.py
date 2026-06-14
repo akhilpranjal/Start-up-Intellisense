@@ -4,6 +4,7 @@ import os
 import json
 import asyncio
 import asyncpg
+import pycountry
 
 from dotenv import load_dotenv
 
@@ -116,8 +117,15 @@ async def founding_year_trend(conn):
 
 
 # COUNTRY DISTRIBUTION
-async def country_distribution(conn):
+async def country_name(code):
+    if not code:
+        return None
 
+    country = pycountry.countries.get(alpha_2=code.upper())
+    return country.name if country else code
+
+
+async def country_distribution(conn):
     rows = await conn.fetch(
         """
         SELECT
@@ -131,10 +139,18 @@ async def country_distribution(conn):
         """
     )
 
+    data = [
+        {
+            "country": await country_name(r["country"]),
+            "count": r["count"],
+        }
+        for r in rows
+    ]
+
     await save_metric(
         conn,
         "country_distribution",
-        [dict(r) for r in rows],
+        data,
     )
 
 
@@ -214,20 +230,32 @@ async def status_distribution(conn):
 # TEAM SIZE HISTOGRAM
 async def team_size_distribution(conn):
 
-    rows = await conn.fetch(
+    row = await conn.fetchrow(
         """
-        SELECT team_size
+        SELECT
+            AVG(team_size) AS avg_team_size,
+            PERCENTILE_CONT(0.5)
+                WITHIN GROUP (
+                    ORDER BY team_size
+                ) AS median_team_size,
+            MAX(team_size) AS max_team_size
         FROM yc_companies
         WHERE team_size IS NOT NULL
         """
     )
 
-    values = [r["team_size"] for r in rows]
-
     await save_metric(
         conn,
         "team_size_distribution",
-        values,
+        {
+            "avg_team_size": float(row["avg_team_size"])
+            if row["avg_team_size"] is not None
+            else None,
+            "median_team_size": float(row["median_team_size"])
+            if row["median_team_size"] is not None
+            else None,
+            "max_team_size": row["max_team_size"],
+        },
     )
 
 
