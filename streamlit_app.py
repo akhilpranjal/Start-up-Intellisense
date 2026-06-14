@@ -9,29 +9,14 @@ from Analytics.agent import (
     ask_ecosystem,
 )
 
-from app_services import (
-    get_overview,
-    get_founding_year_trend,
-    get_country_distribution,
-    get_problem_domain_distribution,
-    get_target_market_distribution,
-    get_status_distribution,
-    get_team_size_distribution,
-    get_cluster_distribution,
-    get_cluster_growth,
-    get_emerging_clusters,
-    get_clusters,
-    get_cluster_members,
-    get_landscape_points,
-    semantic_search_wrapper,
-)
+import app_services
 
  
 # PAGE CONFIG
  
 
 st.set_page_config(
-    page_title="YC Startup Intelligence Platform",
+    page_title="YC Startup IntelliSense Platform",
     page_icon="🚀",
     layout="wide",
 )
@@ -40,15 +25,14 @@ st.set_page_config(
 # SIDEBAR
  
 
-st.sidebar.title("YC Startup Intelligence")
+st.sidebar.title("Navigation")
 
 page = st.sidebar.radio(
-    "Navigation",
+    " ",
     [
         "Overview",
         "Smart Search",
         "Cluster Explorer",
-        "Startup Landscape",
         "Trend Discovery",
     ],
 )
@@ -59,13 +43,13 @@ page = st.sidebar.radio(
 
 if page == "Overview":
 
-    st.title("YC Startup Intelligence Platform")
+    st.title("YC Startup IntelliSense")
 
-    overview = get_overview()
+    overview = app_services.get_overview()
 
     if overview:
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c4 = st.columns(3)
 
         c1.metric(
             "Total Startups",
@@ -75,11 +59,6 @@ if page == "Overview":
         c2.metric(
             "Countries",
             overview.get("countries", 0),
-        )
-
-        c3.metric(
-            "Clusters",
-            overview.get("clusters", 0),
         )
 
         c4.metric(
@@ -99,7 +78,7 @@ if page == "Overview":
     # Startup Formation Trend
      
 
-    trend = get_founding_year_trend()
+    trend = app_services.get_founding_year_trend()
 
     if trend:
 
@@ -124,7 +103,7 @@ if page == "Overview":
     st.divider()
 
      
-    # Countries + Clusters
+    # countries + Clusters
      
 
     col1, col2 = st.columns(2)
@@ -132,13 +111,13 @@ if page == "Overview":
     with col1:
 
         country_dist = (
-            get_country_distribution()
+            app_services.get_country_distribution()
         )
 
         if country_dist:
 
             st.subheader(
-                "Top Countries"
+                "Top countries"
             )
 
             df = pd.DataFrame(
@@ -159,7 +138,7 @@ if page == "Overview":
     with col2:
 
         cluster_dist = (
-            get_cluster_distribution()
+            app_services.get_cluster_distribution()
         )
 
         if cluster_dist:
@@ -186,7 +165,7 @@ if page == "Overview":
     st.divider()
 
      
-    # Startup Status + Team Size
+    # Startup status + Team Size
      
 
     col1, col2 = st.columns(2)
@@ -194,13 +173,13 @@ if page == "Overview":
     with col1:
 
         status_dist = (
-            get_status_distribution()
+            app_services.get_status_distribution()
         )
 
         if status_dist:
 
             st.subheader(
-                "Startup Status Distribution"
+                "Startup status Distribution"
             )
 
             df = pd.DataFrame(
@@ -221,7 +200,7 @@ if page == "Overview":
     with col2:
 
         team_sizes = (
-            get_team_size_distribution()
+            app_services.get_team_size_distribution()
         )
 
         if team_sizes:
@@ -232,13 +211,13 @@ if page == "Overview":
 
             df = pd.DataFrame(
                 {
-                    "team_size": team_sizes
+                    "Team Size": team_sizes
                 }
             )
 
             fig = px.histogram(
                 df,
-                x="team_size",
+                x="Team Size",
                 nbins=30,
             )
 
@@ -258,7 +237,7 @@ if page == "Overview":
     with col1:
 
         domains = (
-            get_problem_domain_distribution()
+            app_services.get_problem_domain_distribution()
         )
 
         if domains:
@@ -285,7 +264,7 @@ if page == "Overview":
     with col2:
 
         markets = (
-            get_target_market_distribution()
+            app_services.get_target_market_distribution()
         )
 
         if markets:
@@ -308,6 +287,22 @@ if page == "Overview":
                 fig,
                 width='stretch',
             )
+
+    cluster_dist = app_services.get_cluster_distribution()
+
+    df = pd.DataFrame(cluster_dist)
+
+    fig = px.treemap(
+        df.head(30),
+        path=["cluster_name"],
+        values="count",
+        title="YC Startup Ecosystem by Sector"
+    )
+
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
 
  
 # SMART SEARCH
@@ -374,14 +369,6 @@ elif page == "Smart Search":
             st.markdown(
                 result["answer"]
             )
-
-            with st.expander(
-                "Sources"
-            ):
-                st.json(
-                    result["sources"]
-                )
-
  
 # CLUSTER EXPLORER
  
@@ -392,7 +379,7 @@ elif page == "Cluster Explorer":
         "Cluster Explorer"
     )
 
-    clusters = get_clusters()
+    clusters = app_services.get_clusters()
 
     if not clusters:
 
@@ -454,7 +441,7 @@ elif page == "Cluster Explorer":
 
     st.divider()
 
-    members = get_cluster_members(
+    members = app_services.get_cluster_members(
         selected_cluster[
             "cluster_id"
         ]
@@ -476,91 +463,6 @@ elif page == "Cluster Explorer":
         )
 
  
-# STARTUP LANDSCAPE
- 
-
-elif page == "Startup Landscape":
-
-    st.title(
-        "Startup Landscape"
-    )
-
-    points = (
-        get_landscape_points()
-    )
-
-    if not points:
-
-        st.warning(
-            "No UMAP coordinates found."
-        )
-        st.stop()
-
-    df = pd.DataFrame(points)
-
-    country_options = sorted(
-        df["country"]
-        .dropna()
-        .unique()
-    )
-
-    selected_country = (
-        st.selectbox(
-            "Country",
-            ["All"]
-            + list(
-                country_options
-            ),
-        )
-    )
-
-    if selected_country != "All":
-
-        df = df[
-            df["country"]
-            == selected_country
-        ]
-
-    year_options = sorted(
-        df["founded_year"]
-        .dropna()
-        .unique()
-    )
-
-    selected_year = (
-        st.selectbox(
-            "Founded Year",
-            ["All"]
-            + list(year_options),
-        )
-    )
-
-    if selected_year != "All":
-
-        df = df[
-            df["founded_year"]
-            == selected_year
-        ]
-
-    fig = px.scatter(
-        df,
-        x="umap_x",
-        y="umap_y",
-        color="cluster_id",
-        hover_name="name",
-        hover_data=[
-            "country",
-            "founded_year",
-        ],
-        title="Semantic Startup Universe",
-    )
-
-    st.plotly_chart(
-        fig,
-        width='stretch',
-    )
-
- 
 # TREND DISCOVERY
  
 
@@ -571,7 +473,7 @@ elif page == "Trend Discovery":
     )
 
     emerging = (
-        get_emerging_clusters()
+        app_services.get_emerging_clusters()
     )
 
     if emerging:
@@ -598,7 +500,7 @@ elif page == "Trend Discovery":
     st.divider()
 
     cluster_growth = (
-        get_cluster_growth()
+        app_services.get_cluster_growth()
     )
 
     if cluster_growth:
@@ -643,7 +545,7 @@ elif page == "Trend Discovery":
     st.divider()
 
     domains = (
-        get_problem_domain_distribution()
+        app_services.get_problem_domain_distribution()
     )
 
     if domains:
