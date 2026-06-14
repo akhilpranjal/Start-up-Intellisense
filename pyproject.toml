@@ -23,5 +23,5 @@ dependencies = [
     "pycountry>=26.2.16",
 ]
 
-[tool.uv]
+[tool.poetry]
 package = false
