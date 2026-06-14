@@ -6,16 +6,15 @@
 ## Screenshots & Demo
 
 ### Application Interface
-![Dashboard Overview - Smart Search](docs/images/app_screenshot_1.png)
-![Dashboard Overview - Cluster Explorer](docs/images/app_screenshot_2.png)
-![Dashboard Overview - Trend Discovery](docs/images/app_screenshot_3.png)
-![Dashboard Overview - Company Details](docs/images/app_screenshot_4.png)
-
+![Overview](ss/app_screenshot_2.png)
+![Smart Search](ss/app_screenshot_1.png)
+![Cluster Explorer](ss/app_screenshot_3.png)
+![Trend Discovery](ss/app_screenshot_4.png)
 ### Data Pipeline Execution
-![Collecting URLs - Y Combinator scraper](docs/images/pipeline_collecting_urls.png)
-![Scraping Company Data](docs/images/pipeline_scraping_urls.png)
-![Extracting Problem Domain & Target Market](docs/images/pipeline_extracting_enrichment.png)
-![Embedding Generation](docs/images/pipeline_embedding.png)
+![Collecting URLs - Y Combinator scraper](ss/Screenshot%20(65).png)
+![Scraping Company Data](ss/Screenshot%20(67).png)
+![Extracting Problem Domain & Target Market](ss/Screenshot%20(68).png)
+![Embedding Generation](ss/Screenshot%20(69).png)
 
 ## About
 
