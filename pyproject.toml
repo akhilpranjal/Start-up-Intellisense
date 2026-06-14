@@ -3,7 +3,7 @@ name = "startup-intellisense"
 version = "0.1.0"
 description = "A tiny YC startup pipeline with Postgres, Playwright, Groq, Qdrant, and Streamlit."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "python-dotenv>=1.0",
     "qdrant-client>=1.9",
