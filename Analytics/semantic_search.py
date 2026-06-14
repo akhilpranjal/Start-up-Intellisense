@@ -65,14 +65,14 @@ def qdrant_search(
     query_vector,
 ):
 
-    hits = qdrant.search(
+    hits = qdrant.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=TOP_K_QDRANT,
         with_payload=True,
     )
 
-    return hits
+    return hits.points
 
 
 # RERANK
