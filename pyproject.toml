@@ -1,5 +1,5 @@
 [project]
-name = "startup-intellisense"
+name = "startup_intellisense"
 version = "0.1.0"
 description = "A tiny YC startup pipeline with Postgres, Playwright, Groq, Qdrant, and Streamlit."
 readme = "README.md"
@@ -24,4 +24,7 @@ dependencies = [
 ]
 
 [tool.poetry]
+package = false
+
+[tool.uv]
 package = false
