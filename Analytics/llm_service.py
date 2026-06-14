@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import streamlit as st
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -9,13 +10,11 @@ from groq import Groq
 load_dotenv()
 
 
-GROQ_MODEL1 = os.getenv("STRUCTURING_GROQ_MODEL")
-GROQ_MODEL2 = os.getenv("SEARCHING_GROQ_MODEL")
+GROQ_MODEL1 = st.secrets["STRUCTURING_GROQ_MODEL"]
+GROQ_MODEL2 = st.secrets["SEARCHING_GROQ_MODEL"]
 
 client = Groq(
-    api_key=os.getenv(
-        "GROQ_API_KEY"
-    )
+    api_key=st.secrets["GROQ_API_KEY"]
 )
 
 
