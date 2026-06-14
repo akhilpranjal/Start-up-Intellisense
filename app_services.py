@@ -153,10 +153,32 @@ async def _get_clusters():
             """
         )
 
-        return [
-            dict(row)
-            for row in rows
-        ]
+        clusters = []
+
+        for row in rows:
+
+            item = dict(row)
+
+            keywords = item.get(
+                "keywords"
+            )
+
+            if isinstance(
+                keywords,
+                str,
+            ):
+                try:
+                    item["keywords"] = (
+                        json.loads(
+                            keywords
+                        )
+                    )
+                except Exception:
+                    pass
+
+            clusters.append(item)
+
+        return clusters
 
     finally:
         await conn.close()
